@@ -122,12 +122,8 @@ def create_secret(logger,namespace,body,v1=None):
     except KeyError:
         logger.debug("No name in body ?")
         raise kopf.TemporaryError("can not get the name.")
-    try:
-        data = body.get('data')
-    except KeyError:
-        data = ''
-        logger.error("Empty secret?? could not get the data.")
-    
+    data = body.get('data') or dict()
+
     if 'valueFrom' in data:
         if len(data.keys()) > 1:
             logger.error('Data keys with ValueFrom error, enable debug for more details')
@@ -146,7 +142,8 @@ def create_secret(logger,namespace,body,v1=None):
             logger.debug (f'Deta details: {data}')
             raise kopf.TemporaryError("Can not get Values from external secret")
 
-    logger.debug(f'Going to create with data: {data}')
+    string_data = body.get('stringData') or dict()
+    logger.debug(f'Going to create with data: {data} and string_data: {string_data}')
     secret_type = 'Opaque'
     if 'type' in body:
         secret_type = body['type']
@@ -155,6 +152,7 @@ def create_secret(logger,namespace,body,v1=None):
     body.type = secret_type
     body.data = data
     # kopf.adopt(body)
+    body.string_data = string_data
     logger.info(f"cloning secret in namespace {namespace}")
     try:
         api_response = v1.create_namespaced_secret(namespace, body)
@@ -167,3 +165,34 @@ def create_secret(logger,namespace,body,v1=None):
         logger.debug(f'Kube exception {e}')
         return 1
     return 0
+
+def update_secret_data(data, string_data, name, obj_body, logger):
+    logger.debug(f'Updating Object body == {obj_body}')
+
+    try:
+        syncedns = obj_body['status']['create_fn']['syncedns']
+    except KeyError:
+        logger.error('No Synced or status Namespaces found')
+        syncedns = []
+
+    v1 = client.CoreV1Api()
+
+    secret_type = 'Opaque'
+    if 'type' in obj_body:
+        secret_type = obj_body['type']
+
+    for ns in syncedns:
+        logger.info(f'Re Syncing secret {name} in ns {ns}')
+        metadata = {'name': name, 'namespace': ns}
+        api_version = 'v1'
+        kind = 'Secret'
+        obj_body = client.V1Secret(
+            api_version=api_version,
+            data=data,
+            string_data=string_data,
+            kind=kind,
+            metadata=metadata,
+            type=secret_type
+        )
+        response = v1.replace_namespaced_secret(name, ns, obj_body)
+        logger.debug(response)

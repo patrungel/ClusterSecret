@@ -4,7 +4,7 @@ from csHelper import *
 
 csecs = {} # all cluster secrets.
 
-@kopf.on.delete('clustersecret.io', 'v1', 'clustersecrets')
+@kopf.on.delete('clustersecret.io', 'v2beta1', 'clustersecrets')
 def on_delete(spec,uid,body,name,logger=None, **_):
     try:
         syncedns = body['status']['create_fn']['syncedns']
@@ -22,7 +22,7 @@ def on_delete(spec,uid,body,name,logger=None, **_):
     except KeyError as k:
         logger.info(f" This csec were not found in memory, maybe it was created in another run: {k}")
 
-@kopf.on.field('clustersecret.io', 'v1', 'clustersecrets', field='matchNamespace')
+@kopf.on.field('clustersecret.io', 'v2beta1', 'clustersecrets', field='matchNamespace')
 def on_field_match_namespace(old, new, name, namespace, body, uid, logger=None, **_):
     logger.debug(f'Namespaces changed: {old} -> {new}')
 
@@ -60,44 +60,24 @@ def on_field_match_namespace(old, new, name, namespace, body, uid, logger=None, 
         logger.debug('This is a new object')
 
 
-@kopf.on.field('clustersecret.io', 'v1', 'clustersecrets', field='data')
+@kopf.on.field('clustersecret.io', 'v2beta1', 'clustersecrets', field='data')
 def on_field_data(old, new, body,name,logger=None, **_):
     logger.debug(f'Data changed: {old} -> {new}')
     if old is not None:
-        logger.debug(f'Updating Object body == {body}')
-
-        try:
-            syncedns = body['status']['create_fn']['syncedns']
-        except KeyError:
-            logger.error('No Synced or status Namespaces found')
-            syncedns=[]
-            
-        v1 = client.CoreV1Api()
-
-        secret_type = 'Opaque'
-        if 'type' in body:
-            secret_type = body['type']
-
-        for ns in syncedns:
-            logger.info(f'Re Syncing secret {name} in ns {ns}')
-            metadata = {'name': name, 'namespace': ns}
-            api_version = 'v1'
-            kind = 'Secret'
-            data = new
-            body = client.V1Secret(
-                api_version=api_version,
-                data=data ,
-                kind=kind,
-                metadata=metadata,
-                type = secret_type
-            )
-            response = v1.replace_namespaced_secret(name,ns,body)
-            logger.debug(response)
+        update_secret_data(new, body.get('stringData'), name, body, logger)
     else:
         logger.debug('This is a new object')
 
-@kopf.on.resume('clustersecret.io', 'v1', 'clustersecrets')
-@kopf.on.create('clustersecret.io', 'v1', 'clustersecrets')
+@kopf.on.field('clustersecret.io', 'v2beta1', 'clustersecrets', field='stringData')
+def on_field_data(old, new, body,name,logger=None, **_):
+    logger.debug(f'StringData changed: {old} -> {new}')
+    if old is not None:
+        update_secret_data(body.get('data'), new, name, body, logger)
+    else:
+        logger.debug('This is a new object')
+
+@kopf.on.resume('clustersecret.io', 'v2beta1', 'clustersecrets')
+@kopf.on.create('clustersecret.io', 'v2beta1', 'clustersecrets')
 async def create_fn(spec,uid,logger=None,body=None,**kwargs):
     v1 = client.CoreV1Api()
     

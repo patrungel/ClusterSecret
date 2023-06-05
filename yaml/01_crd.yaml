@@ -7,9 +7,41 @@ spec:
   scope: Namespaced
   group: clustersecret.io
   versions:
-    - name: v1
+    - name: v2beta1
       served: true
       storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            matchNamespace:
+              type: array
+              items:
+                type: string
+            avoidNamespaces:
+              type: array
+              items:
+                type: string
+            type:
+              type: string
+            data:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+            stringData:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+            status:
+              type: object
+              x-kubernetes-preserve-unknown-fields: true
+      additionalPrinterColumns:
+        - name: Type
+          type: string
+          priority: 0
+          jsonPath: .type
+          description: Secret Type
+    - name: v1
+      served: false
+      storage: false
       schema:
         openAPIV3Schema:
           type: object
